@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, PointerEvent } from "react";
 import JsBarcode from "jsbarcode";
-import { BarcodeItemConfig } from "../types/config";
+import { BarcodeItemConfig } from "../../config/barcode.config";
 
 export default function BarcodeNode({
   config,
@@ -12,8 +12,7 @@ export default function BarcodeNode({
   onBringToFront,
   isActive,
   isInlineEditing,
-  setInlineEditing,
-  isSglMode
+  setInlineEditing
 }: {
   config: BarcodeItemConfig;
   onChange: (updates: Partial<BarcodeItemConfig>) => void;
@@ -23,7 +22,6 @@ export default function BarcodeNode({
   isActive: boolean;
   isInlineEditing: boolean;
   setInlineEditing: (state: boolean) => void;
-  isSglMode: boolean;
 }) {
   const [timeStr, setTimeStr] = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
@@ -281,10 +279,10 @@ export default function BarcodeNode({
           </div>
 
           {/* Row 5: copy delete */}
-          {!isSglMode && (
+          {(onCopy || onRemove) && (
           <div className="flex gap-1 pt-1 border-t border-black/5">
-            <button onClick={() => { onCopy && onCopy(); setInlineEditing(false); }} className="flex-1 py-1 text-xs bg-white hover:bg-black/5 rounded text-black font-semibold border border-black/10 shadow-sm">Copy</button>
-            <button onClick={() => { onRemove && onRemove(); setInlineEditing(false); }} className="flex-1 py-1 text-xs bg-red-50 hover:bg-red-100 rounded text-red-600 font-semibold border border-red-200 shadow-sm">Delete</button>
+            {onCopy && <button onClick={() => { onCopy(); setInlineEditing(false); }} className="flex-1 py-1 text-xs bg-white hover:bg-black/5 rounded text-black font-semibold border border-black/10 shadow-sm">Copy</button>}
+            {onRemove && <button onClick={() => { onRemove(); setInlineEditing(false); }} className="flex-1 py-1 text-xs bg-red-50 hover:bg-red-100 rounded text-red-600 font-semibold border border-red-200 shadow-sm">Delete</button>}
           </div>
           )}
         </div>

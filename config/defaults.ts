@@ -2,7 +2,8 @@
  * 应用配置项默认值
  * 用于初始化和重置应用设置
  */
-import { AppConfig, BarcodeItemConfig } from "./config";
+import { AppConfig } from "./app.config";
+import { BarcodeItemConfig } from "./barcode.config";
 
 export const defaultItem: Omit<BarcodeItemConfig, "id"> = {
   name: "Barcode",
@@ -24,12 +25,34 @@ export const defaultItem: Omit<BarcodeItemConfig, "id"> = {
 };
 
 export const defaultConfig: AppConfig = {
-  app: { mode: "Barcode", uiDesign: "rounded" },
-  mul: {
+  app: { defaultMode: "Barcode", alignSubmenus: true, backgroundColor: "#0b0b0f", wakeLock: true },
+  barcodes: {
     items: [
       { ...defaultItem, id: "mul_1", name: "Time", timeFormat: "HH:mm:ss", position: [0.5, 0.4] as [number, number] },
       { ...defaultItem, id: "mul_2", name: "Date", timeFormat: "yyyy-MM-dd", position: [0.5, 0.6] as [number, number] },
     ],
+  },
+  floating: {
+    groups: [
+      {
+        id: "float_1",
+        name: "Time",
+        position: [0.3, 0.4] as [number, number],
+        size: [0.4, 0.2] as [number, number], // 40% 宽，20% 高
+        nodeDistribution: [0, 0.25, 0.5, 0.75, 1], // 5个字符 HH:mm 的分布
+        lockAspectRatio: true,
+        color: "#ffffff",
+        colors: {
+          "#94d3e2": [1, 3],
+          "#fcef7a": [2, 4],
+          "#ffffff": [],
+        },
+        fontFamily: "monospace",
+        timeFormat: "${HH}:${mm}",
+        nodes: []
+      }
+    ],
+    animationStyle: "fly"
   },
   timer: {
     durationMinutes: 30, // manual mode default
