@@ -36,7 +36,21 @@ const buildColorMap = (entries: [string, number[]][]) =>
     return acc;
   }, {});
 
-const createFloatingGroupId = () => `float_${crypto.randomUUID()}`;
+const getOpacityEntries = (group: FloatingGroupConfig) => {
+  const entries = Object.entries(group.opacities || {});
+  if (entries.length > 0) {
+    return entries.map(([opacity, nodes]) => [opacity, Array.isArray(nodes) ? nodes : []] as [string, number[]]);
+  }
+  return [["1", []] as [string, number[]]];
+};
+
+const buildOpacityMap = (entries: [string, number[]][]) =>
+  entries.reduce<Record<string, number[]>>((acc, [opacity, nodes]) => {
+    acc[opacity] = [...nodes];
+    return acc;
+  }, {});
+
+const createFloatingGroupId = () => `float_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
 
 export default function FloatingView() {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
@@ -124,6 +138,11 @@ export default function FloatingView() {
         "#fcef7a": [2, 4],
         "#ffffff": [],
       },
+      opacities: {
+        "0.5": [3],
+        "1": [],
+      },
+      temperature: 0.5,
       fontFamily: "monospace",
       nodes: [],
     };
@@ -173,6 +192,7 @@ export default function FloatingView() {
 
   const renderGroupSettings = (group: FloatingGroupConfig) => {
     const colorEntries = getColorEntries(group);
+    const opacityEntries = getOpacityEntries(group);
 
     return (
       <div className="absolute left-[102%] top-0 z-50 w-[320px] bg-white/95 backdrop-blur-3xl border border-white/40 shadow-2xl p-3 flex flex-col gap-1.5 font-sans rounded-2xl">
@@ -204,24 +224,24 @@ export default function FloatingView() {
 
           <div className="flex flex-col gap-1">
             <span className="font-semibold text-sm">Node 分布</span>
-            <input
-              type="text"
-              value={group.nodeDistribution.join(", ")}
-              onChange={e => updateGroup(group.id, { nodeDistribution: parseDistributionInput(e.target.value) })}
-              className="w-full px-2 py-1.5 text-xs bg-white/50 border border-black/20 rounded focus:outline-none focus:ring-1 focus:ring-black/20"
-              placeholder="0, 0.25, 0.5, 0.75, 1"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span className="font-semibold text-sm">字体</span>
-            <input
-              type="text"
-              value={group.fontFamily || ""}
-              onChange={e => updateGroup(group.id, { fontFamily: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs bg-white/50 border border-black/20 rounded focus:outline-none focus:ring-1 focus:ring-black/20"
-              placeholder="monospace"
-            />
+            <div className="flex gap-1.5 items-center">
+              <button
+                onClick={() => updateGroup(group.id, { alignment: group.alignment === "auto" ? "manual" : "auto" })}
+                className={`px-2 py-1 text-xs font-medium rounded border transition-all ${
+                  group.alignment === "auto" ? "bg-black text-white border-black" : "bg-white text-black/60 border-black/10"
+                }`}
+              >
+                Auto
+              </button>
+              <input
+                type="text"
+                value={group.nodeDistribution.join(", ")}
+                onChange={e => updateGroup(group.id, { nodeDistribution: parseDistributionInput(e.target.value) })}
+                className="flex-1 px-2 py-1.5 text-xs bg-white/50 border border-black/20 rounded focus:outline-none focus:ring-1 focus:ring-black/20"
+                placeholder="0, 0.25, 0.5, 0.75, 1"
+                disabled={group.alignment === "auto"}
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 pt-1 border-t border-black/10">
@@ -287,6 +307,70 @@ export default function FloatingView() {
               className="w-full mt-1 border border-dashed border-black/20 hover:border-black/40 hover:bg-black/5 text-black/70 font-semibold py-2 rounded-xl text-sm transition-all"
             >
               添加颜色映射
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2 border-t border-black/10">
+            <span className="font-semibold text-sm">外观与动画</span>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-medium text-xs text-black/60 shrink-0 w-12">漂浮强度</span>
+              <input 
+                type="range"
+                min="0" max="1" step="0.1"
+                value={group.temperature ?? 0.5}
+                onChange={e => updateGroup(group.id, { temperature: parseFloat(e.target.value) })}
+                className="flex-1 w-full"
+              />
+              <span className="font-medium text-xs text-black/60 shrink-0 w-6 text-right">{group.temperature ?? 0.5}</span>
+            </div>
+
+            <span className="font-medium text-xs text-black/60">不透明度映射</span>
+            {opacityEntries.map(([opacity, nodes], index) => {
+              const isDefault = index === opacityEntries.length - 1;
+              return (
+                <div key={`${group.id}-opacity-${index}`} className="grid grid-cols-[minmax(0,88px)_minmax(0,1fr)] items-center gap-2">
+                  <input
+                    type="number"
+                    min="0" max="1" step="0.1"
+                    value={opacity}
+                    onChange={e => {
+                      const nextEntries = [...opacityEntries];
+                      nextEntries[index] = [e.target.value, nextEntries[index][1]];
+                      updateGroup(group.id, {
+                        opacities: buildOpacityMap(nextEntries),
+                      });
+                    }}
+                    className="w-[92px] px-2 py-1 text-xs bg-white/50 border border-black/20 rounded font-mono"
+                  />
+                  <input
+                    type="text"
+                    value={nodes.join(", ")}
+                    onChange={e => {
+                      const nextEntries = [...opacityEntries];
+                      nextEntries[index] = [nextEntries[index][0], parseNodeIndexes(e.target.value)];
+                      updateGroup(group.id, {
+                        opacities: buildOpacityMap(nextEntries),
+                      });
+                    }}
+                    className="flex-1 px-2 py-1 text-xs bg-white/50 border border-black/20 rounded"
+                    placeholder={isDefault ? "默认补位" : "1, 3"}
+                    disabled={isDefault}
+                  />
+                </div>
+              );
+            })}
+            <button
+              onClick={() => {
+                const nextEntries = [...opacityEntries];
+                const fallback = nextEntries.pop() || ["1", []];
+                nextEntries.push(["0.5", []], fallback);
+                updateGroup(group.id, {
+                  opacities: buildOpacityMap(nextEntries),
+                });
+              }}
+              className="w-full mt-1 border border-dashed border-black/20 hover:border-black/40 hover:bg-black/5 text-black/70 font-semibold py-2 rounded-xl text-sm transition-all"
+            >
+              添加不透明度映射
             </button>
           </div>
 
@@ -391,6 +475,7 @@ export default function FloatingView() {
       />
 
       {(config.floating.groups || []).map(group => (
+        // ---- 向 FloatingString 传入 group 配置数据，其中包括需要传递给 Node 的位置、颜色、字体等信息 ----
         <FloatingString
           key={group.id}
           group={group}

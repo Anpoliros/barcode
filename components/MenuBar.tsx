@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { defaultConfig } from "../config/defaults";
 
 export interface MenuTab {
   id: string;
@@ -39,6 +40,7 @@ export default function MenuBar({ tabs = [], open, onOpenChange, alignSubmenus, 
   // JSON Config editor states
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
   const [jsonText, setJsonText] = useState("");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -152,6 +154,30 @@ export default function MenuBar({ tabs = [], open, onOpenChange, alignSubmenus, 
                         }
                       }} />
                     </label>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowResetConfirm(!showResetConfirm)} 
+                        className="hover:text-black p-1 bg-black/5 hover:bg-black/10 rounded" 
+                        title="Reset to Default"
+                      >
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M10 8l6 4-6 4V8z" />
+                        </svg>
+                      </button>
+                      {showResetConfirm && (
+                        <div className="absolute top-[120%] left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-3xl border border-black/10 shadow-xl rounded-lg p-2 flex flex-col gap-2 z-[60] w-32">
+                          <span className="text-xs text-black/60 text-center font-semibold">Reset to Default?</span>
+                          <div className="flex gap-1 justify-center">
+                            <button onClick={() => setShowResetConfirm(false)} className="px-2 py-1 bg-black/5 hover:bg-black/10 rounded text-xs font-semibold">Cancel</button>
+                            <button onClick={() => {
+                              setJsonText(JSON.stringify(defaultConfig, null, 2));
+                              setShowResetConfirm(false);
+                            }} className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-500 rounded text-xs font-semibold">Confirm</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1" />
                     <button onClick={() => setJsonEditorOpen(false)} className="hover:text-red-500 p-1 bg-red-50 hover:bg-red-100 text-red-400 rounded transition-colors" title="Cancel">
                       <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>

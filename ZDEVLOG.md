@@ -292,3 +292,222 @@ Reminder配置菜单：
 
 现在几乎所有功能都在根路径实现，我觉得timer和reminder的功能可以封装到别处，页面只操作它们、根据它们的变化做出调整、配置启动停止它们，而不记录它们的状态。你觉得应该怎么设计？
 另外，除了barcode，我想添加新的屏保页面floating了，如果这样的话，最好的实践肯定是他俩各自有路由，但是根路径呢，能不能根路径默认显示一种屏保，而非只有提供入口的功能，即屏保子视图能不能透传到根路径
+
+---
+
+我们来基于floatingclock-swift实现floating页面。你先阅读一下swift源码，说说你的思路。其中有一些tricky的问题，比如需要浮动数字部分能够调节大小以适配更大的屏幕（而非ios），需要把动画实现重新映射，配置也需要重新安排数据结构。再想想有什么其他可能的问题。
+
+---
+
+
+我觉得一个想法是每个字符都算一个FloatingNode，用5个拼出来时间字符串。这样可以非常灵活，动画、颜色甚至大小也是在node中实现。
+
+这样FloatingView只需要管理Node串的位置并传递参数给node。FloatingView还负责读取并维护一个配置，以及和BarcodeView类似的配置菜单。
+
+需求澄清：
+不用加毛玻璃效果。背景纯黑就行。
+大小不基于屏幕，时钟可以放大缩小来回移动。
+在客户端完成，需要考虑性能问题。
+时间我们不用useTimer，毕竟只是个局部字符串。
+
+你觉得怎么样？规划一下
+
+---
+
+效果还不错，我们现在开始功能迭代
+
+1. 可移动时间显示
+我希望用一个div来管理时间显示的5个node，后续要有自由添加的功能，但我们先使用这个简化模型。
+我希望用户可以来回拖动时间显示的div。
+用户能够手动调整这个div的大小。
+
+2. 配置
+我们引入可配置项，配置模型在@/config/floating.config.ts中定义，并且在defaults.ts中给出默认值，位置在barcodes和timer之间。
+需要配置的项：
+- 时间字符串
+    - 位置、大小
+    - 5个node各自的配置
+具体配置参考barcode的配置和swift项目中的配置。
+
+---
+
+效果很好！我们继续迭代
+
+1. menubar支持
+调用MenuBar，构造菜单栏。
+菜单层级：
+- Mode
+- Floating
+    - String1
+        - 配置String1
+        - 显示的字符串，解析方式${HH}:${mm}
+        - 字体
+        - 颜色
+    - String2
+细节参考BarcodeView中的Barcodes子菜单设计
+
+
+2. 大小调节
+我们增加点击并拖动以调节大小的方式。为String添加一个锁定纵横比的配置项。
+
+- 如果锁定纵横比：
+左右拉伸、上下拉伸、斜对角拉伸的效果都和鼠标滚轮相同。
+- 如果不锁定：
+左右将在水平方向拉伸，但是这个拉伸只拉伸各个node的中心点的位置，而非node字符的图形。例如，向右拉伸一倍距离，node字符图形不变，但更分散了。
+
+3. 状态
+floating具有使用与保存config的能力，而非一刷新就重置，参考barcodes
+
+
+
+
+我们这样设计String的位置和大小描述：
+1. 位置记录String左上角的坐标，坐标元素是在屏幕中的百分比，例如(0.5, 0.5)代表屏幕中心。
+2. 大小记录String的长和宽，同样按照屏幕长边和宽边的百分比记录
+3. node的分布记录为一个数组，标记了node的中心相对于String的水平方向百分比位置。例如，(0, 0.25, 0.5, 0.75, 1)记录了五个node均匀地分布在String上，而且由于标记的是node的中心位置，左右会超出String本身的碰撞箱。
+水平拉伸时，这个百分比不会变，只有width变化了，这就保证了我们总能让node按符合常理的模式安排。
+另外，这种设计也便于用户自己定义node的分布。
+
+我刚才稍微修改过MenuBar的实现，接口以现在为准，要兼容现在的MenuBar而不是重构它。现在我们继续吧
+
+---
+
+看起来不错，我们完善一下
+
+1. 实现菜单栏
+
+目标菜单层级：
+- Mode
+- Floating
+    - String1
+        - 配置String1
+        - 显示的字符串，格式：${HH}:${mm}
+        - node分布，格式：0, 0.25, 0.5, 0.75, 1
+        - 字体
+        - 颜色
+    - String2
+参考BarcodeView中的设计
+
+2. 调节大小的方式
+鼠标移动到String边框时会显示可调整大小的箭头，可以按住拉动。这点参考BarcodeNode中的实现
+
+
+---
+
+我们来调整一下floating功能的行为
+
+1. menubar
+参考BarcodeView，将菜单逻辑改为
+
+- Mode子菜单
+- Floating子菜单
+    - String1
+        - 配置String1
+        - 显示的字符串，格式：${HH}:${mm}
+        - node分布，格式：0, 0.25, 0.5, 0.75, 1
+        - 字体
+        - 颜色
+    - ...
+    - 添加新String
+
+
+2. 双击快速配置
+将String解耦到FloatingString.tsx，对齐BarcodeNode的实现。同样加入双击String打开快速配置的能力，和Barcode类似。
+
+---
+
+
+
+3. 实现颜色
+
+我们在floatingconfig中这样定义颜色：
+```json
+"colors": {
+    "#94d3e2": [1, 3],
+    "#fcef7a": [2, 4],
+    "#ffffff": []
+}
+```
+view将把颜色应用到node上。颜色对应的数组指明了哪些node采用该颜色，最后一个颜色是默认颜色，会将前面漏掉的node上色。用户配置菜单里可以修改这几个颜色和映射
+
+---
+
+1. 颜色系统看起来没问题但是node并没有被上色，我估计是还要改改FloatingNode来实现颜色注入吧。
+2. Floating子菜单中的String表项，点击后的FloatingConfig菜单在子菜单的右侧出现，而非替换子菜单为单个String的配置
+3. FloatingConfig菜单中的颜色配置框超出菜单长度了，要确保子元素在菜单内。而且不需要“删”“默认”按钮
+
+
+
+
+非常完美！我们现在来谈谈字体，现在的字体是怎么配置的
+
+
+
+# 0429
+
+我们来开发FloatingNode。
+
+整体的逻辑是FloatingView管理FloatingString，FloatingString中包含若干FloatingNode，并负责控制FloatingNode的参数。这些参数包括：位置、颜色、opacity、字体、动画超参数。
+
+我们先做一些准备工作
+
+1. 对FloatingView和FloatingString按要求加注释，明确在哪里向Node传入参数。
+
+2. 安全移除FloatingString中的滚轮缩放功能
+
+---
+
+好的，我们现在来开发FloatingNode
+
+1. opacity
+增加这个参数，String中通过类似颜色的方式配置它
+```json
+"opacity": {
+    "0.5": [2, 4],
+    "0.8": []
+}
+```
+其中最后一个参数是默认值
+
+2. 悬浮动画
+我们先增加悬浮动画。这个动画的效果是让Node在一定范围内进行随机移动，模拟悬浮的效果。移动通过水平、垂直、旋转角度三个维度进行约束，同时还有移动速度。参考/home/anpoliros/barcode/archive/floatingclock-swift/Views/FloatView.swift中的实现。
+在动画实现内部，我们仍然用swift文件中的几个参数来约束动画，但是我们设计一个超参数temperature，供String调用node。node将根据这个超参数计算几个约束。temperature范围在0到1之间，0时完全不移动，越大移动范围、角度、速度就越大。
+
+3. 时间变动动画
+我们先增加一个简单的淡入淡出动画，即node发现数字变化时，让旧数字从上方淡出，新数字从下方淡入。
+
+---
+
+现在已经动起来了，但是配置还没有暴露出来。我们把opacity和temperature在defaults.ts中体现，并且在FloatingView和FloatingString中暴露给用户的配置菜单中体现
+
+---
+
+浏览器里floating无法加载，报错
+0s36-ox8wq~u5.js:1 Uncaught TypeError: crypto.randomUUID is not a function
+    at 0s36-ox8wq~u5.js:1:8197
+
+我觉得这个问题可能是配置文件的错误，由于每次功能迭代都修改了配置文件，导致很混乱。debug一下，并且说说当用户浏览器里缓存的配置和default不同时，重新部署后这个差异是如何处理的
+
+---
+
+现在好了，我们继续
+
+1. 字体
+我希望字体能够选用比较圆的字体，一个设想的字体链是
+font-family: "SF Pro Rounded", "SF Pro Text", -apple-system, system-ui, sans-serif;
+
+字体不再交给用户配置，只在config中体现，从菜单中移除
+
+2. 温度
+现在移动的还是太快，我希望温度为1时的速度和范围是现在的一半
+
+3. nodeDistribution
+现在的定义方式很精确，但一旦想要增加字符就成了灾难。我们这样定义位置：
+```json
+"allignment": "auto"
+"nodeDistribution": [...]
+```
+allignment设定为auto时，将自动等分。设定为mannual时才使用nodeDistribution的方案。在用户菜单中体现为输入distribution的文本框左边有一个按钮，切换auto状态。auto状态不会覆盖nodeDistribution设置。
+
+4. 动画实现
+时间变动动画没有生效

@@ -62,6 +62,40 @@ const buildColorMap = (entries: ColorEntry[]) =>
     return acc;
   }, {});
 
+const getOpacityEntries = (group: FloatingGroupConfig): ColorEntry[] => {
+  const entries = Object.entries(group.opacities || {});
+  if (entries.length > 0) {
+    return entries.map(([opacity, nodes]) => [opacity, Array.isArray(nodes) ? nodes : []]);
+  }
+  return [["1", []]]; // default opacity 1
+};
+
+const buildOpacityMap = (entries: ColorEntry[]) =>
+  entries.reduce<Record<string, number[]>>((acc, [opacity, nodes]) => {
+    acc[opacity] = [...nodes];
+    return acc;
+  }, {});
+
+const getNodeOpacity = (entries: ColorEntry[], index: number) => {
+  const nodeIndex = index + 1;
+  let fallbackOpacity = entries[entries.length - 1]?.[0] || "1";
+
+  entries.forEach(([opacity], entryIndex) => {
+    if (entryIndex === entries.length - 1) {
+      fallbackOpacity = opacity;
+    }
+  });
+
+  for (let i = 0; i < entries.length - 1; i += 1) {
+    const [opacity, nodes] = entries[i];
+    if (nodes.includes(nodeIndex)) {
+      return opacity;
+    }
+  }
+
+  return fallbackOpacity;
+};
+
 const getNodeColor = (entries: ColorEntry[], index: number) => {
   const nodeIndex = index + 1;
   let fallbackColor = entries[entries.length - 1]?.[0] || "#ffffff";
@@ -104,9 +138,13 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   }, [group.timeFormat]);
 
   const colorEntries = getColorEntries(group);
+  const opacityEntries = getOpacityEntries(group);
   const dist = group.nodeDistribution || [];
+  const isAuto = group.alignment !== "manual";
   const safeDist = timeChars.map((_, index) =>
-    dist[index] !== undefined ? dist[index] : index / Math.max(1, timeChars.length - 1)
+    isAuto
+      ? timeChars.length > 1 ? index / (timeChars.length - 1) : 0.5
+      : (dist[index] !== undefined ? dist[index] : index / Math.max(1, timeChars.length - 1))
   );
 
   const isDragging = useRef(false);
@@ -186,19 +224,6 @@ const FloatingString: React.FC<FloatingStringProps> = ({
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const delta = -e.deltaY * 0.001;
-
-    let newW = group.size[0] + delta;
-    let newH = group.size[1] + (group.lockAspectRatio ? delta * (group.size[1] / Math.max(group.size[0], 0.001)) : 0);
-
-    newW = Math.max(0.05, Math.min(1, newW));
-    newH = Math.max(0.05, Math.min(1, newH));
-
-    updateGroup(group.id, { size: [newW, newH] });
-  };
-
   const updateColorEntries = (entries: ColorEntry[]) => {
     updateGroup(group.id, {
       color: entries[entries.length - 1]?.[0] || "#ffffff",
@@ -225,6 +250,30 @@ const FloatingString: React.FC<FloatingStringProps> = ({
     updateColorEntries([...entries, [nextColor, []], fallback]);
   };
 
+  const updateOpacityEntries = (entries: ColorEntry[]) => {
+    updateGroup(group.id, {
+      opacities: buildOpacityMap(entries),
+    });
+  };
+
+  const setOpacityAt = (index: number, opacity: string) => {
+    const entries = getOpacityEntries(group);
+    entries[index] = [opacity, entries[index]?.[1] || []];
+    updateOpacityEntries(entries);
+  };
+
+  const setOpacityNodesAt = (index: number, value: string) => {
+    const entries = getOpacityEntries(group);
+    entries[index] = [entries[index]?.[0] || "1", parseNodeIndexes(value)];
+    updateOpacityEntries(entries);
+  };
+
+  const addOpacityEntry = () => {
+    const entries = getOpacityEntries(group);
+    const fallback = entries.pop() || ["1", []];
+    updateOpacityEntries([...entries, ["0.5", []], fallback]);
+  };
+
   return (
     <div
       className="absolute cursor-grab active:cursor-grabbing group rounded z-10 hover:ring-1 hover:ring-white/20"
@@ -239,7 +288,6 @@ const FloatingString: React.FC<FloatingStringProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      onWheel={handleWheel}
       onDoubleClick={(e) => {
         e.stopPropagation();
         setInlineEditing(true);
@@ -249,6 +297,7 @@ const FloatingString: React.FC<FloatingStringProps> = ({
         <div
           key={`${group.id}-${index}-${char}`}
           className="absolute top-1/2 flex items-center justify-center pointer-events-none"
+          // ---- 传入节点位置等布局参数 ----
           style={{
             left: `${safeDist[index] * 100}%`,
             transform: "translate(-50%, -50%)",
@@ -257,8 +306,11 @@ const FloatingString: React.FC<FloatingStringProps> = ({
             fontSize: `${group.size[1] * 100}vh`,
           }}
         >
+          {/* ---- 向 FloatingNode 传入颜色、字体等内容属性 ---- */}
           <FloatingNode
             char={char}
+            opacity={Number(getNodeOpacity(opacityEntries, index))}
+            temperature={group.temperature ?? 0.5}
             style={{
               color: getNodeColor(colorEntries, index),
               fontFamily: group.fontFamily || "monospace",
@@ -300,30 +352,34 @@ const FloatingString: React.FC<FloatingStringProps> = ({
           onDoubleClick={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <input
               type="text"
               value={group.timeFormat}
               onChange={(e) => updateGroup(group.id, { timeFormat: e.target.value })}
-              className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
+              className="w-full px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
               placeholder="${HH}:${mm}"
             />
-            <input
-              type="text"
-              value={group.fontFamily || ""}
-              onChange={(e) => updateGroup(group.id, { fontFamily: e.target.value })}
-              className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
-              placeholder="Font"
-            />
+            
+            <div className="flex gap-1.5 items-center">
+              <button
+                onClick={() => updateGroup(group.id, { alignment: group.alignment === "auto" ? "manual" : "auto" })}
+                className={`flex-shrink-0 px-2 py-1 text-xs font-medium rounded border transition-all ${
+                  group.alignment === "auto" ? "bg-black text-white border-black" : "bg-white text-black/60 border-black/10 shadow-sm"
+                }`}
+              >
+                Auto
+              </button>
+              <input
+                type="text"
+                value={(group.nodeDistribution || []).join(", ")}
+                onChange={(e) => updateGroup(group.id, { nodeDistribution: parseDistributionInput(e.target.value) })}
+                className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
+                placeholder="0, 0.25, 0.5, 0.75, 1"
+                disabled={group.alignment === "auto"}
+              />
+            </div>
           </div>
-
-          <input
-            type="text"
-            value={(group.nodeDistribution || []).join(", ")}
-            onChange={(e) => updateGroup(group.id, { nodeDistribution: parseDistributionInput(e.target.value) })}
-            className="w-full px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
-            placeholder="0, 0.25, 0.5, 0.75, 1"
-          />
 
           <div className="flex flex-col gap-1.5 border-t border-black/5 pt-2">
             {colorEntries.map(([color, nodes], index) => {
@@ -358,6 +414,47 @@ const FloatingString: React.FC<FloatingStringProps> = ({
               className="w-full py-1.5 text-xs font-medium rounded-lg border border-dashed border-black/15 text-black/70 hover:bg-black/5 transition-colors"
             >
               添加颜色映射
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-black/5 pt-2">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-black/60 shrink-0">漂浮</span>
+              <input 
+                type="range"
+                min="0" max="1" step="0.1"
+                value={group.temperature ?? 0.5}
+                onChange={(e) => updateGroup(group.id, { temperature: parseFloat(e.target.value) })}
+                className="flex-1"
+              />
+            </div>
+            {opacityEntries.map(([opacity, nodes], index) => {
+              const isDefault = index === opacityEntries.length - 1;
+              return (
+                <div key={`opacity-${opacity}-${index}`} className="grid grid-cols-[minmax(0,120px)_minmax(0,1fr)] items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0" max="1" step="0.1"
+                    value={opacity}
+                    onChange={(e) => setOpacityAt(index, e.target.value)}
+                    className="w-[120px] px-2 py-1 text-xs bg-black/5 border-transparent rounded font-mono outline-none focus:ring-1 focus:ring-black/20"
+                  />
+                  <input
+                    type="text"
+                    value={nodes.join(", ")}
+                    onChange={(e) => setOpacityNodesAt(index, e.target.value)}
+                    className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
+                    placeholder={isDefault ? "默认补位" : "1, 3"}
+                    disabled={isDefault}
+                  />
+                </div>
+              );
+            })}
+            <button
+              onClick={addOpacityEntry}
+              className="w-full py-1.5 text-xs font-medium rounded-lg border border-dashed border-black/15 text-black/70 hover:bg-black/5 transition-colors"
+            >
+              添加透明度映射
             </button>
           </div>
 
