@@ -24,9 +24,14 @@ export interface FloatingGroupConfig {
   color?: string; // 兼容旧配置的默认颜色
   colors?: Record<string, number[]>;
   opacities?: Record<string, number[]>;
-    temperature?: number; // 0-1, 悬浮动画激烈程度
+  aspectRatios?: Record<string, number[]>;
+  verticalOffsets?: Record<string, number[]>;
+  zIndices?: Record<string, number[]>;
+  temperature?: number; // 0-1, 悬浮动画激烈程度
+  animation?: "fly" | "fade";
   // 颜色映射，最后一项作为默认色
   fontFamily?: string; // default font
+  fontWeight?: string | number; // default font weight
   timeFormat: string; // usually 'HH:mm' or similar to derive characters
   nodes: FloatingNodeConfig[]; // list of characters
 }

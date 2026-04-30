@@ -101,6 +101,7 @@ export const defaultConfig: AppConfig = {
           0.46977907854984885,
           0.2802442166314013
         ],
+        "lockAspectRatio": false,
         "alignment": "manual",
         "nodeDistribution": [
           0.14,
@@ -109,7 +110,6 @@ export const defaultConfig: AppConfig = {
           0.62,
           0.86
         ],
-        "lockAspectRatio": false,
         color: "#ffffff",
         colors: {
           "#204eb7": [1, 4],
@@ -120,8 +120,20 @@ export const defaultConfig: AppConfig = {
           "0.9": [3],
           "0.8": [],
         },
+        "verticalOffsets": {
+          "0.2": [3],
+          "0": []
+        },
+        "aspectRatios": {
+          "1": []
+        },
+        "zIndices": {
+          "1": [3],
+          "0": []
+        },
         temperature: 0.2,
-        fontFamily: '"SF Pro Rounded Bold", fantasy, system-ui',
+        fontFamily: 'var(--font-sn-pro)',
+        fontWeight: 900, // 试一试 Bold
         timeFormat: "${HH}:${mm}",
         nodes: []
       }

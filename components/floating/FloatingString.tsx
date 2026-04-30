@@ -5,7 +5,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import FloatingNode from "./FloatingNode";
+import FloatingNode, { type FloatingNodeStabilizationPulse } from "./FloatingNode";
 import { FloatingGroupConfig } from "../../config/floating.config";
 
 interface FloatingStringProps {
@@ -18,6 +18,15 @@ interface FloatingStringProps {
 }
 
 type ColorEntry = [string, number[]];
+
+const EMPTY_STABILIZATION_PULSE: FloatingNodeStabilizationPulse = {
+  id: 0,
+  direction: 0,
+  strength: 0,
+  distance: 0,
+};
+
+const STABILIZATION_RADIUS = 2;
 
 const PRESET_COLORS = ["#94d3e2", "#fcef7a", "#ffffff", "#ff8d8d", "#9bf2b1"];
 
@@ -76,6 +85,42 @@ const buildOpacityMap = (entries: ColorEntry[]) =>
     return acc;
   }, {});
 
+const getAspectRatioEntries = (group: FloatingGroupConfig): ColorEntry[] => {
+  const entries = Object.entries(group.aspectRatios || {});
+  if (entries.length > 0) {
+    return entries.map(([ratio, nodes]) => [ratio, Array.isArray(nodes) ? nodes : []]);
+  }
+  return [["1", []]]; // default aspectRatio 1
+};
+
+const buildAspectRatioMap = (entries: ColorEntry[]) =>
+  entries.reduce<Record<string, number[]>>((acc, [ratio, nodes]) => {
+    acc[ratio] = [...nodes];
+    return acc;
+  }, {});
+
+const getVerticalOffsetEntries = (group: FloatingGroupConfig): ColorEntry[] => {
+  const entries = Object.entries(group.verticalOffsets || {});
+  if (entries.length > 0) {
+    return entries.map(([offset, nodes]) => [offset, Array.isArray(nodes) ? nodes : []]);
+  }
+  return [["0", []]]; // default offset 0
+};
+
+const getZIndexEntries = (group: FloatingGroupConfig): ColorEntry[] => {
+  const entries = Object.entries(group.zIndices || {});
+  if (entries.length > 0) {
+    return entries.map(([zIndex, nodes]) => [zIndex, Array.isArray(nodes) ? nodes : []]);
+  }
+  return [["0", []]]; // default zIndex 0
+};
+
+const buildZIndexMap = (entries: ColorEntry[]) =>
+  entries.reduce<Record<string, number[]>>((acc, [zIndex, nodes]) => {
+    acc[zIndex] = [...nodes];
+    return acc;
+  }, {});
+
 const getNodeOpacity = (entries: ColorEntry[], index: number) => {
   const nodeIndex = index + 1;
   let fallbackOpacity = entries[entries.length - 1]?.[0] || "1";
@@ -94,6 +139,66 @@ const getNodeOpacity = (entries: ColorEntry[], index: number) => {
   }
 
   return fallbackOpacity;
+};
+
+const getNodeAspectRatio = (entries: ColorEntry[], index: number) => {
+  const nodeIndex = index + 1;
+  let fallbackRatio = entries[entries.length - 1]?.[0] || "1";
+
+  entries.forEach(([ratio], entryIndex) => {
+    if (entryIndex === entries.length - 1) {
+      fallbackRatio = ratio;
+    }
+  });
+
+  for (let i = 0; i < entries.length - 1; i += 1) {
+    const [ratio, nodes] = entries[i];
+    if (nodes.includes(nodeIndex)) {
+      return ratio;
+    }
+  }
+
+  return fallbackRatio;
+};
+
+const getNodeVerticalOffset = (entries: ColorEntry[], index: number) => {
+  const nodeIndex = index + 1;
+  let fallbackOffset = entries[entries.length - 1]?.[0] || "0";
+
+  entries.forEach(([offset], entryIndex) => {
+    if (entryIndex === entries.length - 1) {
+      fallbackOffset = offset;
+    }
+  });
+
+  for (let i = 0; i < entries.length - 1; i += 1) {
+    const [offset, nodes] = entries[i];
+    if (nodes.includes(nodeIndex)) {
+      return offset;
+    }
+  }
+
+  return fallbackOffset;
+};
+
+const getNodeZIndex = (entries: ColorEntry[], index: number) => {
+  const nodeIndex = index + 1;
+  let fallbackZIndex = entries[entries.length - 1]?.[0] || "0";
+
+  entries.forEach(([zIndex], entryIndex) => {
+    if (entryIndex === entries.length - 1) {
+      fallbackZIndex = zIndex;
+    }
+  });
+
+  for (let i = 0; i < entries.length - 1; i += 1) {
+    const [zIndex, nodes] = entries[i];
+    if (nodes.includes(nodeIndex)) {
+      return zIndex;
+    }
+  }
+
+  return fallbackZIndex;
 };
 
 const getNodeColor = (entries: ColorEntry[], index: number) => {
@@ -116,6 +221,61 @@ const getNodeColor = (entries: ColorEntry[], index: number) => {
   return fallbackColor;
 };
 
+const buildStabilizationPulses = (
+  prevChars: string[],
+  nextChars: string[],
+  pulseId: number,
+): FloatingNodeStabilizationPulse[] => {
+  if (prevChars.length === 0 || prevChars.length !== nextChars.length) {
+    return nextChars.map(() => EMPTY_STABILIZATION_PULSE);
+  }
+
+  const changedIndexSet = new Set<number>();
+
+  prevChars.forEach((prevChar, index) => {
+    if (nextChars[index] !== prevChar) {
+      changedIndexSet.add(index);
+    }
+  });
+
+  if (changedIndexSet.size === 0) {
+    return nextChars.map(() => EMPTY_STABILIZATION_PULSE);
+  }
+
+  return nextChars.map((_, index) => {
+    if (changedIndexSet.has(index)) {
+      return EMPTY_STABILIZATION_PULSE;
+    }
+
+    let directionalForce = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    changedIndexSet.forEach((changedIndex) => {
+      const distance = Math.abs(changedIndex - index);
+      if (distance === 0 || distance > STABILIZATION_RADIUS) {
+        return;
+      }
+
+      nearestDistance = Math.min(nearestDistance, distance);
+
+      const attenuation = distance === 1 ? 1 : 0.45;
+      directionalForce += Math.sign(changedIndex - index) * attenuation;
+    });
+
+    const strength = Math.min(1, Math.abs(directionalForce));
+    if (strength <= 0 || !Number.isFinite(nearestDistance)) {
+      return EMPTY_STABILIZATION_PULSE;
+    }
+
+    return {
+      id: pulseId,
+      direction: directionalForce > 0 ? 1 : -1,
+      strength,
+      distance: nearestDistance,
+    };
+  });
+};
+
 const FloatingString: React.FC<FloatingStringProps> = ({
   group,
   updateGroup,
@@ -125,11 +285,26 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   setInlineEditing,
 }) => {
   const [timeChars, setTimeChars] = useState<string[]>([]);
+  const [stabilizationPulses, setStabilizationPulses] = useState<FloatingNodeStabilizationPulse[]>([]);
+  const pulseIdRef = useRef(0);
+  const prevTimeCharsRef = useRef<string[]>([]);
 
   useEffect(() => {
     const updateTime = () => {
-      const output = formatFloatingText(group.timeFormat, new Date());
-      setTimeChars(output.split(""));
+      const nextChars = formatFloatingText(group.timeFormat, new Date()).split("");
+      const prevChars = prevTimeCharsRef.current;
+
+      if (prevChars.length === 0) {
+        setTimeChars(nextChars);
+        setStabilizationPulses(nextChars.map(() => EMPTY_STABILIZATION_PULSE));
+        prevTimeCharsRef.current = nextChars;
+        return;
+      }
+
+      pulseIdRef.current += 1;
+      setTimeChars(nextChars);
+      setStabilizationPulses(buildStabilizationPulses(prevChars, nextChars, pulseIdRef.current));
+      prevTimeCharsRef.current = nextChars;
     };
 
     updateTime();
@@ -139,6 +314,9 @@ const FloatingString: React.FC<FloatingStringProps> = ({
 
   const colorEntries = getColorEntries(group);
   const opacityEntries = getOpacityEntries(group);
+  const aspectRatioEntries = getAspectRatioEntries(group);
+  const verticalOffsetEntries = getVerticalOffsetEntries(group);
+  const zIndexEntries = getZIndexEntries(group);
   const dist = group.nodeDistribution || [];
   const isAuto = group.alignment !== "manual";
   const safeDist = timeChars.map((_, index) =>
@@ -274,6 +452,54 @@ const FloatingString: React.FC<FloatingStringProps> = ({
     updateOpacityEntries([...entries, ["0.5", []], fallback]);
   };
 
+  const updateAspectRatioEntries = (entries: ColorEntry[]) => {
+    updateGroup(group.id, {
+      aspectRatios: buildAspectRatioMap(entries),
+    });
+  };
+
+  const setAspectRatioAt = (index: number, ratio: string) => {
+    const entries = getAspectRatioEntries(group);
+    entries[index] = [ratio, entries[index]?.[1] || []];
+    updateAspectRatioEntries(entries);
+  };
+
+  const setAspectRatioNodesAt = (index: number, value: string) => {
+    const entries = getAspectRatioEntries(group);
+    entries[index] = [entries[index]?.[0] || "1", parseNodeIndexes(value)];
+    updateAspectRatioEntries(entries);
+  };
+
+  const addAspectRatioEntry = () => {
+    const entries = getAspectRatioEntries(group);
+    const fallback = entries.pop() || ["1", []];
+    updateAspectRatioEntries([...entries, ["1.5", []], fallback]);
+  };
+
+  const updateZIndexEntries = (entries: ColorEntry[]) => {
+    updateGroup(group.id, {
+      zIndices: buildZIndexMap(entries),
+    });
+  };
+
+  const setZIndexAt = (index: number, zIndex: string) => {
+    const entries = getZIndexEntries(group);
+    entries[index] = [zIndex, entries[index]?.[1] || []];
+    updateZIndexEntries(entries);
+  };
+
+  const setZIndexNodesAt = (index: number, value: string) => {
+    const entries = getZIndexEntries(group);
+    entries[index] = [entries[index]?.[0] || "0", parseNodeIndexes(value)];
+    updateZIndexEntries(entries);
+  };
+
+  const addZIndexEntry = () => {
+    const entries = getZIndexEntries(group);
+    const fallback = entries.pop() || ["0", []];
+    updateZIndexEntries([...entries, ["1", []], fallback]);
+  };
+
   return (
     <div
       className="absolute cursor-grab active:cursor-grabbing group rounded z-10 hover:ring-1 hover:ring-white/20"
@@ -295,7 +521,7 @@ const FloatingString: React.FC<FloatingStringProps> = ({
     >
       {timeChars.map((char, index) => (
         <div
-          key={`${group.id}-${index}-${char}`}
+          key={`${group.id}-${index}`}
           className="absolute top-1/2 flex items-center justify-center pointer-events-none"
           // ---- 传入节点位置等布局参数 ----
           style={{
@@ -310,7 +536,12 @@ const FloatingString: React.FC<FloatingStringProps> = ({
           <FloatingNode
             char={char}
             opacity={Number(getNodeOpacity(opacityEntries, index))}
-            temperature={group.temperature ?? 0.5}
+            temperature={group.temperature ?? 0}
+            aspectRatio={Number(getNodeAspectRatio(aspectRatioEntries, index))}
+            verticalOffset={Number(getNodeVerticalOffset(verticalOffsetEntries, index))}
+            zIndex={Number(getNodeZIndex(zIndexEntries, index))}
+            animation={group.animation || "fly"}
+            stabilizationPulse={stabilizationPulses[index] ?? EMPTY_STABILIZATION_PULSE}
             style={{
               color: getNodeColor(colorEntries, index),
               fontFamily: group.fontFamily || "monospace",
@@ -428,6 +659,18 @@ const FloatingString: React.FC<FloatingStringProps> = ({
                 className="flex-1"
               />
             </div>
+            
+            <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-black/60 shrink-0">动画</span>
+                <select
+                    value={group.animation || "fly"}
+                    onChange={(e) => updateGroup(group.id, { animation: e.target.value as "fly" | "fade" })}
+                    className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
+                >
+                    <option value="fly">飞入/飞出</option>
+                    <option value="fade">交叉淡入淡出</option>
+                </select>
+            </div>
             {opacityEntries.map(([opacity, nodes], index) => {
               const isDefault = index === opacityEntries.length - 1;
               return (
@@ -455,6 +698,68 @@ const FloatingString: React.FC<FloatingStringProps> = ({
               className="w-full py-1.5 text-xs font-medium rounded-lg border border-dashed border-black/15 text-black/70 hover:bg-black/5 transition-colors"
             >
               添加透明度映射
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-black/5 pt-2">
+            {aspectRatioEntries.map(([ratio, nodes], index) => {
+              const isDefault = index === aspectRatioEntries.length - 1;
+              return (
+                <div key={`aspectRatio-${ratio}-${index}`} className="grid grid-cols-[minmax(0,120px)_minmax(0,1fr)] items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0.1" max="5" step="0.1"
+                    value={ratio}
+                    onChange={(e) => setAspectRatioAt(index, e.target.value)}
+                    className="w-[120px] px-2 py-1 text-xs bg-black/5 border-transparent rounded font-mono outline-none focus:ring-1 focus:ring-black/20"
+                  />
+                  <input
+                    type="text"
+                    value={nodes.join(", ")}
+                    onChange={(e) => setAspectRatioNodesAt(index, e.target.value)}
+                    className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
+                    placeholder={isDefault ? "默认补位" : "1, 3"}
+                    disabled={isDefault}
+                  />
+                </div>
+              );
+            })}
+            <button
+              onClick={addAspectRatioEntry}
+              className="w-full py-1.5 text-xs font-medium rounded-lg border border-dashed border-black/15 text-black/70 hover:bg-black/5 transition-colors"
+            >
+              添加长宽比映射
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-black/5 pt-2">
+            {zIndexEntries.map(([zIndex, nodes], index) => {
+              const isDefault = index === zIndexEntries.length - 1;
+              return (
+                <div key={`zIndex-${zIndex}-${index}`} className="grid grid-cols-[minmax(0,120px)_minmax(0,1fr)] items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="-100" max="100" step="1"
+                    value={zIndex}
+                    onChange={(e) => setZIndexAt(index, e.target.value)}
+                    className="w-[120px] px-2 py-1 text-xs bg-black/5 border-transparent rounded font-mono outline-none focus:ring-1 focus:ring-black/20"
+                  />
+                  <input
+                    type="text"
+                    value={nodes.join(", ")}
+                    onChange={(e) => setZIndexNodesAt(index, e.target.value)}
+                    className="flex-1 px-2 py-1 text-xs bg-black/5 border-transparent rounded outline-none focus:ring-1 focus:ring-black/20"
+                    placeholder={isDefault ? "默认补位" : "1, 3"}
+                    disabled={isDefault}
+                  />
+                </div>
+              );
+            })}
+            <button
+              onClick={addZIndexEntry}
+              className="w-full py-1.5 text-xs font-medium rounded-lg border border-dashed border-black/15 text-black/70 hover:bg-black/5 transition-colors"
+            >
+              添加 zIndex 映射
             </button>
           </div>
 

@@ -511,3 +511,75 @@ allignment设定为auto时，将自动等分。设定为mannual时才使用nodeD
 
 4. 动画实现
 时间变动动画没有生效
+
+---
+
+我们来为menubar中的mode菜单的edit config窗口中加一个重置按钮，在导入按钮的右侧，图标为圆圈中有一个三角，按下后将把配置更新为default。按下这个按钮后需要用户确认，确认弹窗在按钮下面出现。
+
+---
+
+
+
+
+
+
+
+
+我们来为FloatingNode加两个参数，并在String、config等相关位置都加入它们
+
+1. 
+我们来为FloatingNode添加参数aspectRatio，用来描述字符的长宽比，并暴露到菜单，使得用户可以控制字符的胖瘦。String同样通过一个类似color和opacity的格式来描述它。
+```json
+"aspectRatios": {
+    "1": [3],
+    "1.5": []
+}
+```
+
+2. 
+参数verticalOffset，可以控制字符在垂直方向上的偏移，例如设置为正，字符将相对正常位置向上一些。这个量是用偏移量与字符垂直长度的比例计算的。这个配置不暴露到菜单。String同样通过类似的方法描述：
+```json
+"verticalOffsets":{
+    "0.2": [3],
+    "0": []
+}
+```
+
+---
+
+verticalOffset有一个bug，设置为0时，字符的底部似乎和String的水平中线对齐，设置为-0.01则又正常了。我希望设置为0时字符的水平中线和String的水平中线对齐。
+
+另外，我们再为Node添加一个参数zIndex，它定义了Node的z序，使得一些字符能够遮住另一些。String中的配置方式仍然类似：
+"zIndices":{
+    "1": [3],
+    "0": []
+}
+
+
+---
+
+verticalOffset=0时刚才是异常偏上，现在是完全不工作了。我们的目标是：当verticalOffset=0时，Node字符能够在String的框里，Node字符的垂直方向中心和String的垂直方向中心对齐。
+
+
+
+---
+
+我们来打磨Node的动画。参考FloatView中的三个动画，尽量还原地迁移到FloatingNode中或调整现有实现。同时，animation相关配置移动到String中。
+
+目标配置格式："animation": "fly"或"fade"
+
+
+我们来讨论一下字体，现在它可以在config:floating:fontFamily: 中配置。我希望引入google fonts支持，并且希望使用SN Pro字体，还可以调字重。引入字体时，我希望是next在构建时引入字体并做子集，而非引入cdn字体。
+
+---
+
+我刚才基于FloatView.swift在FloatingNode中加入了动画。但是现在飘浮动画和performStabilization都没有生效。看看是怎么回事，告诉我怎么改。
+
+---
+
+飘浮动画回来了，但是回正动画仍然没有生效。
+
+我觉得回正动画也许应该由FloatingString触发，它在捕捉到某个node发生变化时，将向附近的node发送信号触发回正。我们再给回正动画加上方向和力度参数，这就能实现如果字符串中心的node更新了，左边的会向右回正，右边的向左回正，而且离的远的node不受影响，实现更真实的物理效果。
+不过这样做可能会导致性能问题，你先评估可行性，如果可行就实现，不可行跟我说。
+
+另外在时间更新动画中，旧的数字应用向上fly或fade的动画。
