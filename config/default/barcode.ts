@@ -1,0 +1,77 @@
+/**
+ * Barcode 屏保默认配置
+ */
+import { BarcodeItemConfig } from "../barcode.config";
+
+export const defaultItem: Omit<BarcodeItemConfig, "id"> = {
+  name: "Barcode",
+  color: "#000000",
+  timeFormat: "hhmmss",
+  encoding: "CODE128",
+  size: 100,
+  width: 250,
+  height: 120,
+  lockAspectRatio: true,
+  labelRadius: 24,
+  padding: 24,
+  zIndex: 10,
+  showLabel: true,
+  showText: true,
+  font: "monospace",
+  drag: true,
+  position: [0.5, 0.5],
+};
+
+export const defaultBarcodeConfig = {
+  items: [
+    {
+      id: "main_green",
+      color: "#00ff00",
+      timeFormat: "69700hhmmss0",
+      encoding: "EAN13",
+      size: 175.5,
+      showLabel: false,
+      showText: true,
+      font: "monospace",
+      drag: true,
+      position: [0.27, 0.37] as [number, number],
+      zIndex: 234,
+      width: 591,
+      height: 300,
+    },
+    {
+      id: "side_blue",
+      color: "#007AFF",
+      timeFormat: "hhmmss",
+      encoding: "CODE39",
+      size: 82,
+      showLabel: false,
+      showText: false,
+      font: "monospace",
+      drag: true,
+      position: [0.40, 0.63] as [number, number],
+      zIndex: 216,
+      width: 292,
+      height: 108,
+      lockAspectRatio: true,
+    },
+    {
+      id: "bottom_white",
+      name: "Barcode",
+      color: "#ffffff",
+      timeFormat: "hhmmss",
+      encoding: "CODE39",
+      size: 100,
+      width: 158,
+      height: 85.44,
+      lockAspectRatio: true,
+      labelRadius: 24,
+      zIndex: 227,
+      showLabel: false,
+      showText: true,
+      font: "monospace",
+      drag: true,
+      position: [0.078, 0.866] as [number, number],
+    },
+  ],
+};

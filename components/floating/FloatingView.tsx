@@ -9,6 +9,9 @@ import FloatingString from "./FloatingString";
 import { AppConfig } from "../../config/app.config";
 import { defaultConfig } from "../../config/defaults";
 import { FloatingGroupConfig } from "../../config/floating.config";
+import { CONFIG_KEYS, readConfig, writeConfig } from "../../config/storage";
+import { useReminder } from "../../hooks/useReminder";
+import { useTimer } from "../../hooks/useTimer";
 
 const parseDistributionInput = (value: string) =>
   value
@@ -59,6 +62,16 @@ export default function FloatingView() {
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [popupType, setPopupType] = useState<"timer" | "reminder" | null>(null);
+  const [reminderInput, setReminderInput] = useState("");
+
+  const timerHook = useTimer(config.timer);
+  const { timerMode, timerPaused, timeUp } = timerHook.state;
+  const { setTimerPaused, setTimeUp, startManual, startAuto, stopTimer } = timerHook.actions;
+
+  const reminderHook = useReminder(config.reminder);
+  const { hasPunched } = reminderHook.state;
+  const { setHasPunched } = reminderHook.actions;
 
   useEffect(() => {
     let wakeLock: WakeLockSentinel | null = null;
@@ -90,22 +103,21 @@ export default function FloatingView() {
 
   useEffect(() => {
     let cancelled = false;
-    const saved = localStorage.getItem("floating_config");
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        startTransition(() => {
-          if (cancelled) return;
-          setConfig(prev => ({
-            ...prev,
-            floating: { ...prev.floating, ...(parsed.floating || {}) },
-            app: { ...prev.app, ...(parsed.app || {}) }
-          }));
-        });
-      } catch {
-        // 忽略损坏的本地配置
-      }
+    const floatingSaved = readConfig(CONFIG_KEYS.floating);
+    const barcodeSaved = readConfig(CONFIG_KEYS.barcode);
+
+    if (floatingSaved || barcodeSaved) {
+      startTransition(() => {
+        if (cancelled) return;
+        setConfig(prev => ({
+          ...prev,
+          floating: { ...prev.floating, ...(floatingSaved?.floating || {}) },
+          app: { ...prev.app, ...(floatingSaved?.app || {}) },
+          timer: { ...prev.timer, ...(barcodeSaved?.timer || {}), ...(floatingSaved?.timer || {}) },
+          reminder: { ...prev.reminder, ...(barcodeSaved?.reminder || {}), ...(floatingSaved?.reminder || {}) },
+        }));
+      });
     }
 
     startTransition(() => {
@@ -121,7 +133,29 @@ export default function FloatingView() {
 
   const saveConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    localStorage.setItem("floating_config", JSON.stringify(newConfig));
+    writeConfig(CONFIG_KEYS.floating, newConfig);
+
+    const barcodeConfig = readConfig(CONFIG_KEYS.barcode) || defaultConfig;
+    writeConfig(CONFIG_KEYS.barcode, {
+      ...barcodeConfig,
+      timer: newConfig.timer,
+      reminder: newConfig.reminder,
+    });
+  };
+
+  const resetTimerConfig = () => {
+    saveConfig({ ...config, timer: { ...defaultConfig.timer, barcodeConfig: config.timer.barcodeConfig } });
+    stopTimer();
+  };
+
+  const handleDoubleClick = () => {
+    if (timeUp) {
+      setPopupType("timer");
+      return;
+    }
+    if (!hasPunched) {
+      setPopupType("reminder");
+    }
   };
 
   const addFloatingGroup = () => {
@@ -383,6 +417,126 @@ export default function FloatingView() {
     );
   };
 
+  const renderTimerSettings = () => (
+    <div className="relative w-[300px] bg-white/95 backdrop-blur-3xl border border-white/40 shadow-2xl p-3 flex flex-col gap-2 font-sans max-h-[80vh] overflow-y-auto rounded-2xl text-black">
+      <div className="flex justify-between items-center mb-2 px-1">
+        <span className="font-bold text-lg">Timer Config</span>
+        <button onClick={resetTimerConfig} className="px-3 py-1 rounded text-sm font-semibold bg-black/5 hover:bg-black/10 text-black/80 transition-colors">
+          Reset
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-2 bg-black/5 p-2 rounded-xl">
+        <span className="font-bold text-sm">Manual</span>
+        <div className="flex gap-1 items-center">
+          {[10, 20, 30, 40, 60].map(val => (
+            <button
+              key={val}
+              onClick={() => saveConfig({ ...config, timer: { ...config.timer, durationMinutes: val } })}
+              className={`flex-1 py-1 rounded text-xs font-semibold border ${config.timer.durationMinutes === val ? "bg-white shadow-sm border-black/10 text-black" : "bg-transparent border-transparent text-black/60 hover:bg-black/5"}`}
+            >
+              {val}
+            </button>
+          ))}
+          <input type="number" step="0.1" value={config.timer.durationMinutes} onChange={e => saveConfig({ ...config, timer: { ...config.timer, durationMinutes: Number(e.target.value) } })} className="w-12 px-1 py-1 text-xs bg-white border border-black/10 rounded outline-none flex-shrink-0 text-center" />
+        </div>
+        {timerMode === "manual" ? (
+          <div className="flex gap-2">
+            <button onClick={() => setTimerPaused(!timerPaused)} className="flex-1 py-1.5 rounded-lg text-sm font-bold bg-yellow-500 hover:bg-yellow-600 text-white transition-colors">{timerPaused ? "Resume" : "Pause"}</button>
+            <button onClick={stopTimer} className="flex-1 py-1.5 rounded-lg text-sm font-bold bg-red-500 hover:bg-red-600 text-white transition-colors">Stop</button>
+          </div>
+        ) : (
+          <button onClick={startManual} className="w-full py-1.5 rounded-lg text-sm font-bold bg-green-500 hover:bg-green-600 text-white transition-colors">Start Manual</button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 bg-black/5 p-2 rounded-xl">
+        <span className="font-bold text-sm">Auto (Loop)</span>
+        <div className="flex gap-2 items-center">
+          <div className="flex flex-col flex-1">
+            <span className="text-[10px] uppercase font-bold text-black/40">Work (min)</span>
+            <input type="number" step="0.1" value={config.timer.autoWorkMinutes} onChange={e => saveConfig({ ...config, timer: { ...config.timer, autoWorkMinutes: Number(e.target.value) } })} className="w-full px-2 py-1 mt-0.5 text-xs bg-white border border-black/10 rounded outline-none" />
+          </div>
+          <div className="flex flex-col flex-1">
+            <span className="text-[10px] uppercase font-bold text-black/40">Wait (min)</span>
+            <input type="number" step="0.1" value={config.timer.autoWaitMinutes} onChange={e => saveConfig({ ...config, timer: { ...config.timer, autoWaitMinutes: Number(e.target.value) } })} className="w-full px-2 py-1 mt-0.5 text-xs bg-white border border-black/10 rounded outline-none" />
+          </div>
+        </div>
+        {timerMode === "auto" ? (
+          <div className="flex gap-2">
+            <button onClick={() => setTimerPaused(!timerPaused)} className="flex-1 py-1.5 rounded-lg text-sm font-bold bg-yellow-500 hover:bg-yellow-600 text-white transition-colors">{timerPaused ? "Resume" : "Pause"}</button>
+            <button onClick={stopTimer} className="flex-1 py-1.5 rounded-lg text-sm font-bold bg-red-500 hover:bg-red-600 text-white transition-colors">Stop</button>
+          </div>
+        ) : (
+          <button onClick={startAuto} className="w-full py-1.5 rounded-lg text-sm font-bold bg-blue-500 hover:bg-blue-600 text-white transition-colors">Start Auto</button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3 mt-1">
+        <div className="flex flex-row gap-2 w-full">
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="font-semibold text-[11px] truncate">Timer Color</span>
+            <div className="flex gap-1 items-center mt-1">
+              <input type="color" value={config.timer.timerColor} onChange={e => saveConfig({ ...config, timer: { ...config.timer, timerColor: e.target.value } })} className="w-5 h-5 p-0 border-none cursor-pointer bg-transparent shrink-0" />
+              <input type="text" value={config.timer.timerColor} onChange={e => saveConfig({ ...config, timer: { ...config.timer, timerColor: e.target.value } })} className="w-full min-w-0 px-1 py-1 text-xs bg-white/50 border border-black/20 rounded font-mono" />
+            </div>
+          </div>
+
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="font-semibold text-[11px] truncate">Flash Color</span>
+            <div className="flex gap-1 items-center mt-1">
+              <input type="color" value={config.timer.flashColor || "#007AFF"} onChange={e => saveConfig({ ...config, timer: { ...config.timer, flashColor: e.target.value } })} className="w-5 h-5 p-0 border-none cursor-pointer bg-transparent shrink-0" />
+              <input type="text" value={config.timer.flashColor || "#007AFF"} onChange={e => saveConfig({ ...config, timer: { ...config.timer, flashColor: e.target.value } })} className="w-full min-w-0 px-1 py-1 text-xs bg-white/50 border border-black/20 rounded font-mono" />
+            </div>
+          </div>
+
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="font-semibold text-[11px] truncate">Flash (sec)</span>
+            <input type="number" step="0.1" value={config.timer.flashInterval === undefined ? 1 : config.timer.flashInterval} onChange={e => saveConfig({ ...config, timer: { ...config.timer, flashInterval: Number(e.target.value) } })} className="w-full mt-1 px-1 py-1 text-xs bg-white/50 border border-black/20 rounded" />
+          </div>
+        </div>
+
+        <div>
+          <span className="font-semibold text-sm">Popup Text</span>
+          <textarea value={config.timer.popupText} onChange={e => saveConfig({ ...config, timer: { ...config.timer, popupText: e.target.value } })} className="w-full mt-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded h-16 resize-none" />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderReminderSettings = () => (
+    <div className="relative w-[300px] bg-white/95 backdrop-blur-3xl border border-white/40 shadow-2xl p-3 flex flex-col gap-2 font-sans max-h-[80vh] overflow-y-auto rounded-2xl text-black">
+      <div className="flex justify-between items-center mb-2 px-1">
+        <span className="font-bold text-lg">Reminder Config</span>
+        <button
+          onClick={() => {
+            setHasPunched(false);
+          }}
+          className="px-3 py-1 rounded text-sm font-semibold bg-black/5 hover:bg-black/10 text-black/80 transition-colors"
+        >
+          Reset
+        </button>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div>
+          <span className="font-semibold text-sm">Refresh Time (HH:mm)</span>
+          <input type="time" value={config.reminder.refreshTime} onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, refreshTime: e.target.value } })} className="w-full mt-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded" />
+        </div>
+        <div>
+          <span className="font-semibold text-sm">Reminder Color</span>
+          <div className="flex gap-2 items-center mt-1">
+            <input type="color" value={config.reminder.reminderColor} onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, reminderColor: e.target.value } })} className="w-6 h-6 p-0 border-none cursor-pointer bg-transparent" />
+            <input type="text" value={config.reminder.reminderColor} onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, reminderColor: e.target.value } })} className="flex-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded font-mono" />
+          </div>
+        </div>
+        <div>
+          <span className="font-semibold text-sm">Popup Text</span>
+          <textarea value={config.reminder.popupText} onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, popupText: e.target.value } })} className="w-full mt-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded h-16 resize-none" />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="relative w-screen h-screen overflow-hidden text-white transition-colors duration-1000"
@@ -395,6 +549,7 @@ export default function FloatingView() {
         setInlineEditId(null);
         setEditingNameId(null);
       }}
+      onDoubleClick={handleDoubleClick}
     >
       <MenuBar
         open={menuOpen}
@@ -471,6 +626,16 @@ export default function FloatingView() {
               </div>
             ),
           },
+          {
+            id: "Timer",
+            label: "Timer",
+            content: renderTimerSettings(),
+          },
+          {
+            id: "Reminder",
+            label: "Reminder",
+            content: renderReminderSettings(),
+          },
         ]}
       />
 
@@ -484,8 +649,49 @@ export default function FloatingView() {
           onRemove={() => removeGroup(group.id)}
           isInlineEditing={inlineEditId === group.id}
           setInlineEditing={(state) => setInlineEditId(state ? group.id : null)}
+          isReminderActive={!hasPunched}
+          reminderColors={config.floating.reminderColors}
         />
       ))}
+
+      {popupType && (
+        <div className="fixed top-20 left-10 p-5 bg-white shadow-2xl border border-black/10 rounded-2xl z-[99999] animate-in slide-in-from-top-10 fade-in w-80 text-black" onClick={e => e.stopPropagation()}>
+          <h2 className="text-xl font-bold mb-3">{popupType === "timer" ? "Timer" : "Reminder"}</h2>
+          <p className="text-sm mb-4 text-black/80">{popupType === "timer" ? config.timer?.popupText : config.reminder?.popupText}</p>
+
+          {popupType === "reminder" && (
+            <input
+              type="date"
+              value={reminderInput}
+              onChange={e => setReminderInput(e.target.value)}
+              className="w-full mb-3 px-3 py-2 border border-black/20 rounded-lg text-sm bg-white text-black"
+            />
+          )}
+
+          <button
+            onClick={() => {
+              if (popupType === "timer") {
+                setTimeUp(false);
+                stopTimer();
+                setPopupType(null);
+                return;
+              }
+
+              const todayDateStr = new Date().toLocaleDateString("en-CA");
+              if (reminderInput.trim() === todayDateStr) {
+                setHasPunched(true);
+                setPopupType(null);
+                setReminderInput("");
+              } else {
+                alert("Incorrect date! Try again.");
+              }
+            }}
+            className="w-full py-2 bg-black text-white font-medium rounded-lg text-sm hover:bg-black/80 transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -38,10 +38,6 @@ export interface FloatingGroupConfig {
 
 export interface FloatingConfig {
   groups: FloatingGroupConfig[];
+  reminderColors: string[]; // reminder punch 字母颜色
   animationStyle: "fly" | "crossfade" | "none"; // Animation Style Enum from swift
 }
-
-export const defaultFloatingConfig: FloatingConfig = {
-  groups: [],
-  animationStyle: "fly",
-};

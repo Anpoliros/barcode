@@ -15,9 +15,22 @@ interface FloatingStringProps {
   onRemove?: () => void;
   isInlineEditing: boolean;
   setInlineEditing: (state: boolean) => void;
+  isReminderActive?: boolean;
+  reminderColors?: string[];
 }
 
 type ColorEntry = [string, number[]];
+type ReminderPlan = {
+  minuteKey: number;
+  revealTimes: number[];
+  slots: number[];
+};
+
+type DisplayState = {
+  chars: string[];
+  punchLetters: Record<number, number>;
+  forceAutoDistribution: boolean;
+};
 
 const EMPTY_STABILIZATION_PULSE: FloatingNodeStabilizationPulse = {
   id: 0,
@@ -29,6 +42,8 @@ const EMPTY_STABILIZATION_PULSE: FloatingNodeStabilizationPulse = {
 const STABILIZATION_RADIUS = 2;
 
 const PRESET_COLORS = ["#94d3e2", "#fcef7a", "#ffffff", "#ff8d8d", "#9bf2b1"];
+const REMINDER_WORD = "punch";
+const REMINDER_FALLBACK_COLORS = ["#ff453a", "#ff6b5f", "#ff2d55", "#ff8a80", "#ffd1cc"];
 
 const parseDistributionInput = (value: string) =>
   value
@@ -276,6 +291,60 @@ const buildStabilizationPulses = (
   });
 };
 
+const createReminderPlan = (minuteKey: number, baseLength: number): ReminderPlan => {
+  const finalReveal = 18 + Math.random() * 20;
+  const earlyReveals = Array.from({ length: REMINDER_WORD.length - 1 }, () => 2 + Math.random() * Math.max(1, finalReveal - 4))
+    .sort((a, b) => a - b);
+  const slots = Array.from({ length: Math.max(baseLength, REMINDER_WORD.length) }, (_, index) => index)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, REMINDER_WORD.length);
+
+  return {
+    minuteKey,
+    revealTimes: [...earlyReveals, finalReveal],
+    slots,
+  };
+};
+
+const buildReminderDisplay = (baseChars: string[], now: Date, planRef: React.MutableRefObject<ReminderPlan | null>): DisplayState => {
+  const minuteKey = Math.floor(now.getTime() / 60000);
+  const baseLength = Math.max(baseChars.length, REMINDER_WORD.length);
+
+  if (!planRef.current || planRef.current.minuteKey !== minuteKey || planRef.current.slots.length < REMINDER_WORD.length) {
+    planRef.current = createReminderPlan(minuteKey, baseLength);
+  }
+
+  const plan = planRef.current;
+  const elapsedSeconds = (now.getTime() - minuteKey * 60000) / 1000;
+  const revealedCount = plan.revealTimes.filter((time) => elapsedSeconds >= time).length;
+
+  if (revealedCount >= REMINDER_WORD.length) {
+    return {
+      chars: REMINDER_WORD.split(""),
+      punchLetters: Object.fromEntries(REMINDER_WORD.split("").map((_, index) => [index, index])),
+      forceAutoDistribution: true,
+    };
+  }
+
+  const nextChars = [...baseChars];
+  const punchLetters: Record<number, number> = {};
+
+  for (let index = 0; index < revealedCount; index += 1) {
+    const slot = plan.slots[index] ?? index;
+    while (nextChars.length <= slot) {
+      nextChars.push(" ");
+    }
+    nextChars[slot] = REMINDER_WORD[index];
+    punchLetters[slot] = index;
+  }
+
+  return {
+    chars: nextChars,
+    punchLetters,
+    forceAutoDistribution: revealedCount > 0,
+  };
+};
+
 const FloatingString: React.FC<FloatingStringProps> = ({
   group,
   updateGroup,
@@ -283,34 +352,46 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   onRemove,
   isInlineEditing,
   setInlineEditing,
+  isReminderActive = false,
+  reminderColors = REMINDER_FALLBACK_COLORS,
 }) => {
-  const [timeChars, setTimeChars] = useState<string[]>([]);
+  const [displayState, setDisplayState] = useState<DisplayState>({
+    chars: [],
+    punchLetters: {},
+    forceAutoDistribution: false,
+  });
   const [stabilizationPulses, setStabilizationPulses] = useState<FloatingNodeStabilizationPulse[]>([]);
   const pulseIdRef = useRef(0);
   const prevTimeCharsRef = useRef<string[]>([]);
+  const reminderPlanRef = useRef<ReminderPlan | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
-      const nextChars = formatFloatingText(group.timeFormat, new Date()).split("");
+      const now = new Date();
+      const baseChars = formatFloatingText(group.timeFormat, now).split("");
+      const nextDisplay = isReminderActive
+        ? buildReminderDisplay(baseChars, now, reminderPlanRef)
+        : { chars: baseChars, punchLetters: {}, forceAutoDistribution: false };
+      const nextChars = nextDisplay.chars;
       const prevChars = prevTimeCharsRef.current;
 
       if (prevChars.length === 0) {
-        setTimeChars(nextChars);
+        setDisplayState(nextDisplay);
         setStabilizationPulses(nextChars.map(() => EMPTY_STABILIZATION_PULSE));
         prevTimeCharsRef.current = nextChars;
         return;
       }
 
       pulseIdRef.current += 1;
-      setTimeChars(nextChars);
+      setDisplayState(nextDisplay);
       setStabilizationPulses(buildStabilizationPulses(prevChars, nextChars, pulseIdRef.current));
       prevTimeCharsRef.current = nextChars;
     };
 
     updateTime();
-    const interval = window.setInterval(updateTime, 1000);
+    const interval = window.setInterval(updateTime, isReminderActive ? 500 : 1000);
     return () => window.clearInterval(interval);
-  }, [group.timeFormat]);
+  }, [group.timeFormat, isReminderActive]);
 
   const colorEntries = getColorEntries(group);
   const opacityEntries = getOpacityEntries(group);
@@ -318,12 +399,21 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   const verticalOffsetEntries = getVerticalOffsetEntries(group);
   const zIndexEntries = getZIndexEntries(group);
   const dist = group.nodeDistribution || [];
-  const isAuto = group.alignment !== "manual";
+  const timeChars = displayState.chars;
+  const isAuto = group.alignment !== "manual" || displayState.forceAutoDistribution;
   const safeDist = timeChars.map((_, index) =>
     isAuto
       ? timeChars.length > 1 ? index / (timeChars.length - 1) : 0.5
       : (dist[index] !== undefined ? dist[index] : index / Math.max(1, timeChars.length - 1))
   );
+  const safeReminderColors = reminderColors.length > 0 ? reminderColors : REMINDER_FALLBACK_COLORS;
+  const getDisplayColor = (index: number) => {
+    const punchLetterIndex = displayState.punchLetters[index];
+    if (punchLetterIndex !== undefined) {
+      return safeReminderColors[punchLetterIndex % safeReminderColors.length];
+    }
+    return getNodeColor(colorEntries, index);
+  };
 
   const isDragging = useRef(false);
   const dragStartInfo = useRef({ startX: 0, startY: 0, initialPosX: 0, initialPosY: 0 });
@@ -527,7 +617,7 @@ const FloatingString: React.FC<FloatingStringProps> = ({
           style={{
             left: `${safeDist[index] * 100}%`,
             transform: "translate(-50%, -50%)",
-            color: getNodeColor(colorEntries, index),
+            color: getDisplayColor(index),
             fontFamily: group.fontFamily || "monospace",
             fontSize: `${group.size[1] * 100}vh`,
           }}
@@ -543,7 +633,7 @@ const FloatingString: React.FC<FloatingStringProps> = ({
             animation={group.animation || "fly"}
             stabilizationPulse={stabilizationPulses[index] ?? EMPTY_STABILIZATION_PULSE}
             style={{
-              color: getNodeColor(colorEntries, index),
+              color: getDisplayColor(index),
               fontFamily: group.fontFamily || "monospace",
               fontSize: `${group.size[1] * 100}vh`,
             }}

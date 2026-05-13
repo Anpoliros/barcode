@@ -1,13 +1,23 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { AppConfig } from "../config/app.config";
+import { useAppRuntime } from "../components/AppRuntimeProvider";
 
 export function useTimer(timerConfig: AppConfig["timer"]) {
-  const [timerMode, setTimerMode] = useState<'manual' | 'auto' | null>(null);
-  const [timerPaused, setTimerPaused] = useState(false);
-  const [autoPhase, setAutoPhase] = useState<'work' | 'wait'>('work');
-  const [timeUp, setTimeUp] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const [flashToggle, setFlashToggle] = useState(false);
+  const { timer } = useAppRuntime();
+  const {
+    timerMode,
+    setTimerMode,
+    timerPaused,
+    setTimerPaused,
+    autoPhase,
+    setAutoPhase,
+    timeUp,
+    setTimeUp,
+    timeRemaining,
+    setTimeRemaining,
+    flashToggle,
+    setFlashToggle,
+  } = timer;
 
   // Timer Logic
   useEffect(() => {
@@ -39,7 +49,7 @@ export function useTimer(timerConfig: AppConfig["timer"]) {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerMode, timerPaused, autoPhase, timeUp, timerConfig]);
+  }, [timerMode, timerPaused, autoPhase, timeUp, timerConfig, setAutoPhase, setTimeRemaining, setTimeUp]);
 
   // Flash Logic
   useEffect(() => {
@@ -52,7 +62,7 @@ export function useTimer(timerConfig: AppConfig["timer"]) {
       setFlashToggle(false);
     }
     return () => clearInterval(interval);
-  }, [timeUp, timerConfig?.flashInterval]);
+  }, [timeUp, timerConfig?.flashInterval, setFlashToggle]);
 
   const startManual = () => {
     setTimerMode('manual');

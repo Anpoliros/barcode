@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Inter, Roboto_Mono } from "next/font/google";
+import { AppRuntimeProvider } from "../components/AppRuntimeProvider";
 import "./globals.css";
 
 const snPro = localFont({
@@ -42,7 +43,9 @@ export default function RootLayout({
       lang="en"
       className={`${snPro.variable} ${inter.variable} ${robotoMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AppRuntimeProvider>{children}</AppRuntimeProvider>
+      </body>
     </html>
   );
 }

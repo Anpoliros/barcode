@@ -2,6 +2,7 @@ import { BarcodeItemConfig } from "./barcode.config";
 import { FloatingConfig } from "./floating.config";
 
 export type AppConfig = {
+  version: number;
   app: {
     defaultMode: "Barcode" | "Floating";
     alignSubmenus?: boolean;
@@ -24,6 +25,6 @@ export type AppConfig = {
     refreshTime: string; // 刷新时间 (HH:mm)
     reminderColor: string; // 待办提醒颜色
     popupText: string; // 提醒弹窗文本
-    lastPunchedDate: string; // 最后打卡日期 (YYYY-MM-DD)
+    lastPunchedDate?: string; // 旧配置兼容：运行态已迁移到 runtime
   };
 };

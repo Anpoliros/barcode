@@ -6,6 +6,7 @@ import BarcodeNode from "./BarcodeNode";
 import { AppConfig } from "../../config/app.config";
 import { BarcodeItemConfig } from "../../config/barcode.config";
 import { defaultConfig, defaultItem } from "../../config/defaults";
+import { CONFIG_KEYS, readConfig, writeConfig } from "../../config/storage";
 import { useTimer } from "../../hooks/useTimer";
 import { useReminder } from "../../hooks/useReminder";
 
@@ -92,18 +93,9 @@ export default function BarcodeView() {
 
   // Hydration & Saving
   useEffect(() => {
-    const saved = localStorage.getItem("barcode_config");
+    const saved = readConfig(CONFIG_KEYS.barcode);
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setConfig(prev => ({
-          ...prev,
-          app: { ...prev.app, ...(parsed.app || {}) },
-          barcodes: { items: parsed?.barcodes?.items || prev.barcodes.items },
-          timer: { ...prev.timer, ...(parsed.timer || {}) },
-          reminder: { ...prev.reminder, ...(parsed.reminder || {}) }
-        }));
-      } catch (e) { }
+      setConfig(saved);
     }
     setHydrated(true);
   }, []);
@@ -116,7 +108,7 @@ export default function BarcodeView() {
 
   const saveConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    localStorage.setItem("barcode_config", JSON.stringify(newConfig));
+    writeConfig(CONFIG_KEYS.barcode, newConfig);
   };
   const updateApp = (key: keyof AppConfig["app"], value: any) => saveConfig({ ...config, app: { ...config.app, [key]: value } });
 
@@ -428,7 +420,6 @@ export default function BarcodeView() {
               <div className="flex justify-between items-center mb-2 px-1">
                 <span className="font-bold text-lg">Reminder Config</span>
                 <button onClick={() => {
-                  saveConfig({ ...config, reminder: { ...config.reminder, lastPunchedDate: "" } });
                   setHasPunched(false);
                 }} className="px-3 py-1 rounded text-sm font-semibold bg-black/5 hover:bg-black/10 text-black/80 transition-colors">
                   Reset
@@ -511,7 +502,6 @@ export default function BarcodeView() {
               } else {
                 const todayDateStr = new Date().toLocaleDateString('en-CA');
                 if (reminderInput.trim() === todayDateStr) {
-                  saveConfig({ ...config, reminder: { ...config.reminder, lastPunchedDate: todayDateStr } });
                   setHasPunched(true);
                   setPopupType(null);
                   setReminderInput('');
