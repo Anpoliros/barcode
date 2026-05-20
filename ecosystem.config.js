@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'barcode',
+      name: 'vsss',
       script: 'node_modules/next/dist/bin/next',
       args: 'start -p 8888',
       cwd: '/home/anpoliros/barcode',

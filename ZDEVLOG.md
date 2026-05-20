@@ -639,3 +639,28 @@ config持续迭代到现在，感觉臃肿而且问题很多，提些建议。
 另外
 
 - 默认配置放到config/default/中，更方便修改。
+
+
+# 0520
+
+我们来为floating增加timer功能。先做一个简单版本
+
+1. timer的用户配置菜单和逻辑保持不变
+
+2. timer打开时，屏幕上会出现一个大小为默认的一半的倒计时string，仍然是hh:mm
+
+3. 时间到时，所有string变成reminderColors配色，倒计时string消失
+
+4. 双击屏幕解除计时后，倒计时string消失，颜色恢复
+
+5. timer auto模式下，在一个计时结束下一个计时未开始时，倒计时string不消失，而是倒计时显示空窗期的时间。例如：
+auto配置work:40 wait:10，在wait:10时，倒计时string会显示00:10的倒计时
+
+---
+
+
+1. 让timerstring同样具有双击快捷配置的能力，只不过不能删除。用户也可以来回拖动timerstring，或是调整它的大小，等等。用户通过配置修改timerstring改变的颜色和位置大小等都会保留
+
+2. 将配置中floating:reminderColors调整到reminder:reminderColors
+
+3. 增加timer:timerColors，类似reminderColors，绿色系

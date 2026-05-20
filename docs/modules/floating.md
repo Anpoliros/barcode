@@ -27,7 +27,7 @@ Floating 模式将格式化后的时间字符串拆成字符节点，在全屏�
 | `components/floating/FloatingString.tsx` | 单条字符串组，负责时间格式化、reminder punch 循环、节点属性映射、拖拽缩放和快速配置。 |
 | `components/floating/FloatingNode.tsx` | 单个字符节点，负责视觉样式和动画。 |
 | `config/floating.config.ts` | floating 类型与默认 floating 配置。 |
-| `config/default/` | 默认 floating group 与 `reminderColors`。 |
+| `config/default/` | 默认 floating group、timer string 与 reminder/timer 颜色组。 |
 | `components/AppRuntimeProvider.tsx` | 跨路由共享 timer 运行态和 reminder 打卡日期。 |
 | `hooks/useReminder.ts` | 判断当天是否已打卡。 |
 | `hooks/useTimer.ts` | 提供 floating Timer 菜单的共享运行态。 |
@@ -55,7 +55,7 @@ Floating 模式将格式化后的时间字符串拆成字符节点，在全屏�
 
 节点序号从 `1` 开始，而 React 数组索引从 `0` 开始。修改映射逻辑时要特别留意这个差异。
 
-`FloatingConfig` 还包含 `reminderColors`，用于配置 `punch` 字母的独立颜色序列。默认值在 `config/default/floating.ts` 的 `floating.reminderColors`。
+`reminder.reminderColors` 用于配置 `punch` 字母的独立颜色序列；`timer.timerColors` 和 `timer.floatingConfig` 用于配置 floating timer string 的默认颜色、位置和尺寸。
 
 ## Reminder 显示态
 
@@ -68,7 +68,7 @@ floating 中双击屏幕空白处会打开与 barcode 一致的 reminder 确认�
 - 每分钟生成一套随机替换计划。
 - `p`、`u`、`n`、`c`、`h` 按顺序出现，但替换到字符串中的位置随机。
 - 第五个字母会在第 40 秒前出现，之后保持完整 `punch` 到下一分钟。
-- reminder 字母使用 `floating.reminderColors` 配置的独立主题色。
+- reminder 字母使用 `reminder.reminderColors` 配置的独立主题色。
 - reminder 激活期间节点分布强制使用 auto，避免 punch 字母挤在一起。
 
 ## Timer 菜单

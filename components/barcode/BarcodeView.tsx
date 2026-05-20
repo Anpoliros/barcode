@@ -142,7 +142,14 @@ export default function BarcodeView() {
 
 
   const resetTimerConfig = () => {
-    saveConfig({ ...config, timer: { ...defaultConfig.timer, barcodeConfig: config.timer.barcodeConfig } });
+    saveConfig({
+      ...config,
+      timer: {
+        ...defaultConfig.timer,
+        barcodeConfig: config.timer.barcodeConfig,
+        floatingConfig: config.timer.floatingConfig,
+      },
+    });
     stopTimer();
   };
 

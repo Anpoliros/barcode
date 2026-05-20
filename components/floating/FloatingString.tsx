@@ -16,7 +16,9 @@ interface FloatingStringProps {
   isInlineEditing: boolean;
   setInlineEditing: (state: boolean) => void;
   isReminderActive?: boolean;
+  isReminderColorForced?: boolean;
   reminderColors?: string[];
+  displayText?: string;
 }
 
 type ColorEntry = [string, number[]];
@@ -353,7 +355,9 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   isInlineEditing,
   setInlineEditing,
   isReminderActive = false,
+  isReminderColorForced = false,
   reminderColors = REMINDER_FALLBACK_COLORS,
+  displayText,
 }) => {
   const [displayState, setDisplayState] = useState<DisplayState>({
     chars: [],
@@ -364,11 +368,12 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   const pulseIdRef = useRef(0);
   const prevTimeCharsRef = useRef<string[]>([]);
   const reminderPlanRef = useRef<ReminderPlan | null>(null);
+  const safeDisplayText = displayText ?? "";
 
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      const baseChars = formatFloatingText(group.timeFormat, now).split("");
+      const baseChars = (safeDisplayText || formatFloatingText(group.timeFormat, now)).split("");
       const nextDisplay = isReminderActive
         ? buildReminderDisplay(baseChars, now, reminderPlanRef)
         : { chars: baseChars, punchLetters: {}, forceAutoDistribution: false };
@@ -391,7 +396,7 @@ const FloatingString: React.FC<FloatingStringProps> = ({
     updateTime();
     const interval = window.setInterval(updateTime, isReminderActive ? 500 : 1000);
     return () => window.clearInterval(interval);
-  }, [group.timeFormat, isReminderActive]);
+  }, [safeDisplayText, group.timeFormat, isReminderActive]);
 
   const colorEntries = getColorEntries(group);
   const opacityEntries = getOpacityEntries(group);
@@ -408,6 +413,10 @@ const FloatingString: React.FC<FloatingStringProps> = ({
   );
   const safeReminderColors = reminderColors.length > 0 ? reminderColors : REMINDER_FALLBACK_COLORS;
   const getDisplayColor = (index: number) => {
+    if (isReminderColorForced) {
+      return safeReminderColors[index % safeReminderColors.length];
+    }
+
     const punchLetterIndex = displayState.punchLetters[index];
     if (punchLetterIndex !== undefined) {
       return safeReminderColors[punchLetterIndex % safeReminderColors.length];

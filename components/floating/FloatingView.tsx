@@ -25,6 +25,12 @@ const parseNodeIndexes = (value: string) =>
     .map((item) => Number.parseInt(item.trim(), 10))
     .filter((item) => Number.isInteger(item) && item > 0);
 
+const parseColorListInput = (value: string) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 const getColorEntries = (group: FloatingGroupConfig) => {
   const entries = Object.entries(group.colors || {});
   if (entries.length > 0) {
@@ -55,6 +61,14 @@ const buildOpacityMap = (entries: [string, number[]][]) =>
 
 const createFloatingGroupId = () => `float_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
 
+const formatTimerDisplay = (totalSeconds: number) => {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const displayMinutes = safeSeconds > 0 ? Math.ceil(safeSeconds / 60) : 0;
+  const hours = String(Math.floor(displayMinutes / 60)).padStart(2, "0");
+  const minutes = String(displayMinutes % 60).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
 export default function FloatingView() {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [hydrated, setHydrated] = useState(false);
@@ -66,7 +80,7 @@ export default function FloatingView() {
   const [reminderInput, setReminderInput] = useState("");
 
   const timerHook = useTimer(config.timer);
-  const { timerMode, timerPaused, timeUp } = timerHook.state;
+  const { timerMode, timerPaused, autoPhase, timeUp, timeRemaining } = timerHook.state;
   const { setTimerPaused, setTimeUp, startManual, startAuto, stopTimer } = timerHook.actions;
 
   const reminderHook = useReminder(config.reminder);
@@ -144,7 +158,14 @@ export default function FloatingView() {
   };
 
   const resetTimerConfig = () => {
-    saveConfig({ ...config, timer: { ...defaultConfig.timer, barcodeConfig: config.timer.barcodeConfig } });
+    saveConfig({
+      ...config,
+      timer: {
+        ...defaultConfig.timer,
+        barcodeConfig: config.timer.barcodeConfig,
+        floatingConfig: config.timer.floatingConfig,
+      },
+    });
     stopTimer();
   };
 
@@ -202,6 +223,47 @@ export default function FloatingView() {
     if (activeSubmenu === id) setActiveSubmenu(null);
     if (inlineEditId === id) setInlineEditId(null);
     if (editingNameId === id) setEditingNameId(null);
+  };
+
+  // #----Timer 显示态----
+  const shouldShowTimerString = Boolean(timerMode && (!timeUp || (timerMode === "auto" && autoPhase === "wait")));
+  const timerDisplayText = formatTimerDisplay(timeRemaining);
+
+  const updateTimerGroup = (updates: Partial<FloatingGroupConfig>) => {
+    const nextTimerGroup = {
+      ...config.timer.floatingConfig,
+      ...updates,
+      id: config.timer.floatingConfig.id,
+    };
+    const nextTimerColors = updates.colors ? Object.keys(updates.colors) : config.timer.timerColors;
+
+    saveConfig({
+      ...config,
+      timer: {
+        ...config.timer,
+        timerColors: nextTimerColors,
+        floatingConfig: nextTimerGroup,
+      },
+    });
+  };
+
+  const updateTimerColors = (value: string) => {
+    const nextColors = parseColorListInput(value);
+    if (nextColors.length === 0) return;
+
+    const fallback = nextColors[nextColors.length - 1];
+    saveConfig({
+      ...config,
+      timer: {
+        ...config.timer,
+        timerColors: nextColors,
+        floatingConfig: {
+          ...config.timer.floatingConfig,
+          color: fallback,
+          colors: Object.fromEntries(nextColors.map((color, index) => [color, index === nextColors.length - 1 ? [] : [index + 1]])),
+        },
+      },
+    });
   };
 
   const copyGroup = (id: string) => {
@@ -497,6 +559,17 @@ export default function FloatingView() {
         </div>
 
         <div>
+          <span className="font-semibold text-sm">Timer Colors</span>
+          <input
+            type="text"
+            value={(config.timer.timerColors || []).join(", ")}
+            onChange={e => updateTimerColors(e.target.value)}
+            className="w-full mt-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded font-mono"
+            placeholder="#34c759, #30d158, #d7fbe8"
+          />
+        </div>
+
+        <div>
           <span className="font-semibold text-sm">Popup Text</span>
           <textarea value={config.timer.popupText} onChange={e => saveConfig({ ...config, timer: { ...config.timer, popupText: e.target.value } })} className="w-full mt-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded h-16 resize-none" />
         </div>
@@ -528,6 +601,16 @@ export default function FloatingView() {
             <input type="color" value={config.reminder.reminderColor} onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, reminderColor: e.target.value } })} className="w-6 h-6 p-0 border-none cursor-pointer bg-transparent" />
             <input type="text" value={config.reminder.reminderColor} onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, reminderColor: e.target.value } })} className="flex-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded font-mono" />
           </div>
+        </div>
+        <div>
+          <span className="font-semibold text-sm">Reminder Colors</span>
+          <input
+            type="text"
+            value={(config.reminder.reminderColors || []).join(", ")}
+            onChange={e => saveConfig({ ...config, reminder: { ...config.reminder, reminderColors: parseColorListInput(e.target.value) } })}
+            className="w-full mt-1 px-2 py-1 text-sm bg-white/50 border border-black/20 rounded font-mono"
+            placeholder="#ff453a, #ff6b5f, #ffd1cc"
+          />
         </div>
         <div>
           <span className="font-semibold text-sm">Popup Text</span>
@@ -650,9 +733,23 @@ export default function FloatingView() {
           isInlineEditing={inlineEditId === group.id}
           setInlineEditing={(state) => setInlineEditId(state ? group.id : null)}
           isReminderActive={!hasPunched}
-          reminderColors={config.floating.reminderColors}
+          isReminderColorForced={timeUp}
+          reminderColors={config.reminder.reminderColors}
         />
       ))}
+
+      {shouldShowTimerString && (
+        <FloatingString
+          key={config.timer.floatingConfig.id}
+          group={config.timer.floatingConfig}
+          updateGroup={(_, updates) => updateTimerGroup(updates)}
+          isInlineEditing={inlineEditId === config.timer.floatingConfig.id}
+          setInlineEditing={(state) => setInlineEditId(state ? config.timer.floatingConfig.id : null)}
+          isReminderColorForced={timeUp}
+          reminderColors={config.reminder.reminderColors}
+          displayText={timerDisplayText}
+        />
+      )}
 
       {popupType && (
         <div className="fixed top-20 left-10 p-5 bg-white shadow-2xl border border-black/10 rounded-2xl z-[99999] animate-in slide-in-from-top-10 fade-in w-80 text-black" onClick={e => e.stopPropagation()}>

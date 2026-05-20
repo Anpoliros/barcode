@@ -5,6 +5,7 @@
 
 import { AppConfig } from "./app.config";
 import { CONFIG_VERSION, defaultConfig } from "./default";
+import { FloatingConfig } from "./floating.config";
 import { readRuntime, writeRuntime } from "./runtime";
 
 export const CONFIG_KEYS = {
@@ -14,9 +15,14 @@ export const CONFIG_KEYS = {
 
 type StoredConfig = Partial<AppConfig> & {
   version?: number;
+  floating?: Partial<FloatingConfig> & {
+    reminderColors?: string[];
+  };
 };
 
 export const migrateConfig = (stored?: StoredConfig | null): AppConfig => {
+  const legacyReminderColors = stored?.floating?.reminderColors;
+
   const next: AppConfig = {
     ...defaultConfig,
     ...(stored || {}),
@@ -24,10 +30,22 @@ export const migrateConfig = (stored?: StoredConfig | null): AppConfig => {
     app: { ...defaultConfig.app, ...(stored?.app || {}) },
     barcodes: { items: stored?.barcodes?.items || defaultConfig.barcodes.items },
     floating: { ...defaultConfig.floating, ...(stored?.floating || {}) },
-    timer: { ...defaultConfig.timer, ...(stored?.timer || {}) },
+    timer: {
+      ...defaultConfig.timer,
+      ...(stored?.timer || {}),
+      barcodeConfig: {
+        ...defaultConfig.timer.barcodeConfig,
+        ...(stored?.timer?.barcodeConfig || {}),
+      },
+      floatingConfig: {
+        ...defaultConfig.timer.floatingConfig,
+        ...(stored?.timer?.floatingConfig || {}),
+      },
+    },
     reminder: {
       ...defaultConfig.reminder,
       ...(stored?.reminder || {}),
+      reminderColors: stored?.reminder?.reminderColors || legacyReminderColors || defaultConfig.reminder.reminderColors,
       lastPunchedDate: undefined,
     },
   };
@@ -57,9 +75,15 @@ export const readConfig = (key: string): AppConfig | null => {
 export const writeConfig = (key: string, config: AppConfig) => {
   const reminder = { ...config.reminder };
   delete reminder.lastPunchedDate;
+  const floating = { ...config.floating } as AppConfig["floating"] & {
+    reminderColors?: string[];
+  };
+  delete floating.reminderColors;
+
   localStorage.setItem(key, JSON.stringify({
     ...config,
     version: CONFIG_VERSION,
+    floating,
     reminder,
   }));
 };

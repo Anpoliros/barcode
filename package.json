@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "deploy": "npm run build && pm2 start ecosystem.config.js",
-    "stop": "pm2 stop nextsite",
-    "log": "pm2 logs nextsite",
+    "stop": "pm2 stop vsss",
+    "log": "pm2 logs vsss",
     "lint": "eslint"
   },
   "dependencies": {

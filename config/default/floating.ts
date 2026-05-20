@@ -41,6 +41,5 @@ export const defaultFloatingConfig: FloatingConfig = {
       nodes: [],
     },
   ],
-  reminderColors: ["#ff453a", "#ff6b5f", "#ff2d55", "#ff8a80", "#ffd1cc"],
   animationStyle: "fly",
 };
